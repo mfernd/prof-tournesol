@@ -1,0 +1,18 @@
+repositories:
+  - name: kubeai
+    url: https://www.kubeai.org
+  - name: k8sgpt
+    url: https://charts.k8sgpt.ai
+
+releases:
+  - name: kubeai
+    namespace: kubeai
+    chart: kubeai/kubeai
+    version: 0.19.0
+    set:
+      - name: secrets.huggingface.token
+        value: {{ requiredEnv "HUGGINGFACE_TOKEN" }}
+  - name: k8sgpt-operator
+    namespace: k8sgpt-operator-system
+    chart: k8sgpt/k8sgpt-operator
+    version: 0.2.14

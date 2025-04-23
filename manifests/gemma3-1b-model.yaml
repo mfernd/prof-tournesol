@@ -1,0 +1,12 @@
+apiVersion: kubeai.org/v1
+kind: Model
+metadata:
+  name: gemma3-1b-cpu
+  namespace: kubeai
+spec:
+  features: [TextGeneration]
+  url: ollama://gemma3:1b
+  engine: OLlama
+  resourceProfile: cpu:2
+  minReplicas: 1
+  
