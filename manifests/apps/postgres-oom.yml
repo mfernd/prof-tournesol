@@ -1,17 +1,17 @@
+# Postgres that will OOM and enter a crashloop backoff
+
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: postgres-oom
 spec:
-  # Project
-  project: gaia-support
+  project: default
   syncPolicy:
     automated:
       prune: true
     syncOptions:
       - CreateNamespace=true
 
-  # Namespace
   destination:
     namespace: apps-postgres-oom
     server: https://kubernetes.default.svc
@@ -24,4 +24,10 @@ spec:
     helm:
       valuesObject:
         primary:
-          resourcesPreset: "nano"
+          resources:
+            requests:
+              cpu: "0.2"
+              memory: "6Mi"
+            limits:
+              cpu: "0.3"
+              memory: "8Mi"
