@@ -7,7 +7,6 @@ spec:
   syncPolicy:
     automated:
       prune: true
-      selfHeal: false
     syncOptions:
       - CreateNamespace=true
 
@@ -19,5 +18,3 @@ spec:
     repoURL: https://github.com/mfernd/prof-tournesol.git
     path: apps/nginx-oom
     targetRevision: HEAD
-    helm:
-      values: ""
