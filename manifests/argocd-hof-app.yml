@@ -1,7 +1,11 @@
+# HOF - Higher Order Function
+#  This application will deploy other apps in the manifests/apps/ folder
+# --
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: nginx-oom
+  name: apps-manager
+  namespace: argocd
 spec:
   project: default
   syncPolicy:
@@ -12,12 +16,12 @@ spec:
       - CreateNamespace=true
 
   destination:
-    namespace: apps-nginx-oom
+    namespace: argocd
     server: https://kubernetes.default.svc
 
   source:
     repoURL: https://github.com/mfernd/prof-tournesol.git
-    path: apps/nginx-oom
+    path: manifests/apps/
     targetRevision: HEAD
     helm:
       values: ""
