@@ -3,6 +3,8 @@ repositories:
     url: https://www.kubeai.org
   - name: k8sgpt
     url: https://charts.k8sgpt.ai
+  - name: argo
+    url: https://argoproj.github.io/argo-helm
 
 releases:
   - name: kubeai
@@ -16,3 +18,7 @@ releases:
     namespace: k8sgpt-operator-system
     chart: k8sgpt/k8sgpt-operator
     version: 0.2.14
+  - name: argocd
+    namespace: argocd
+    chart: argo/argo-cd
+    version: 5.41.0

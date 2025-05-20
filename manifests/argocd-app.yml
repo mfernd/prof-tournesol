@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: operator
+spec:
+  destination:
+    name: ''
+    namespace: myblog
+    server: https://kubernetes.default.svc
+  source:
+    path: helm
+    repoURL: <git_url>
+    targetRevision: HEAD
+    helm:
+      valueFiles:
+        - values.yaml
+  sources: []
+  project: default
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
