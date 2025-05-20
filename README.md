@@ -18,7 +18,7 @@ Fix your Kubernetes errors with AI. 🌻
 
 ## Architecture
 
-![Architecture diagram](architecture.svg)
+![Architecture diagram](architecture.excalidraw.png)
 
 ## Use k8sgpt
 
