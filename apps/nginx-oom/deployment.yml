@@ -18,9 +18,9 @@ spec:
           resources:
             limits:
               cpu: "0.2"
-              memory: "4Mi"
+              memory: "6Mi"
             requests:
               cpu: "0.2"
-              memory: "4Mi"
+              memory: "6Mi"
           ports:
             - containerPort: 80
