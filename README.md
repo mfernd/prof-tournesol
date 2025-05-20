@@ -16,6 +16,10 @@ Fix your Kubernetes errors with AI. 🌻
     - speech used
     - response (boolean) to the question: can they intervene?
 
+## Architecture
+
+![Architecture diagram](architecture.svg)
+
 ## Use k8sgpt
 
 Add you Hugging Face token to the `.env` file:
