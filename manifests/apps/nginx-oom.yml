@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx-oom
+  namespace: argocd
+spec:
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+
+  destination:
+    namespace: apps-nginx-oom
+    server: https://kubernetes.default.svc
+
+  source:
+    repoURL: https://github.com/mfernd/prof-tournesol.git
+    path: apps/nginx-oom
+    targetRevision: HEAD
+    helm:
+      values: ""
