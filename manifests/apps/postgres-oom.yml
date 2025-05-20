@@ -17,7 +17,6 @@ spec:
     server: https://kubernetes.default.svc
 
   source:
-    path: ''
     repoURL: registry-1.docker.io/bitnamicharts
     chart: 'postgresql'
     targetRevision: '16.4.5'
