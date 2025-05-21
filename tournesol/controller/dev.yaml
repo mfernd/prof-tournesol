@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: result-controller
+  namespace: k8sgpt-operator-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: result-controller
+  template:
+    metadata:
+      labels:
+        app: result-controller
+    spec:
+      serviceAccountName: result-controller-sa
+      containers:
+        - name: controller
+          image: result-controller:latest # Use the local image name
+          imagePullPolicy: IfNotPresent # Changed to IfNotPresent
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: result-controller-sa
+  namespace: k8sgpt-operator-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: result-controller-role
+rules:
+  - apiGroups: ["core.k8sgpt.ai"]
+    resources: ["results"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps", "pods", "secrets", "services", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: result-controller-rolebinding
+subjects:
+  - kind: ServiceAccount
+    name: result-controller-sa
+    namespace: k8sgpt-operator-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: result-controller-role
