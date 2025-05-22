@@ -9,6 +9,7 @@ mod utils;
 pub fn create_root_app(state: AppState) -> Router {
     Router::new()
         .typed_post(routes::create_issue::create_issue_handler)
+        .typed_post(routes::create_pull_request::create_pull_request_handler)
         .typed_get(routes::health::health_handler)
         .with_state(state)
         .layer(ServiceBuilder::new().layer(TraceLayer::new_for_http()))

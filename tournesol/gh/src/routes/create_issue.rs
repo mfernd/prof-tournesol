@@ -1,7 +1,6 @@
+use crate::AppState;
 use axum::{Json, extract::State};
 use tracing::{error, info};
-
-use crate::AppState;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateIssueBody {

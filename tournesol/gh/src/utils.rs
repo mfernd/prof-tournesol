@@ -1,3 +1,6 @@
+pub const GITHUB_APP_NAME: &str = "Prof. Tournesol";
+pub const GITHUB_APP_EMAIL: &str = "1299312+prof-tournesol[bot]@users.noreply.github.com";
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum GetOctocrabError {
