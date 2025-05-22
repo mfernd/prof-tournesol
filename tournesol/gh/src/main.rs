@@ -4,6 +4,7 @@ use tracing::{error, info};
 
 #[derive(Debug)]
 pub enum ServerError {
+    InvalidConfig(String),
     InvalidAddress(std::net::AddrParseError),
     TcpBind(std::io::Error),
     Run(std::io::Error),
@@ -11,9 +12,11 @@ pub enum ServerError {
 
 #[tokio::main]
 async fn main() -> Result<(), ServerError> {
+    let _ = dotenvy::dotenv();
     tracing_subscriber::fmt::init();
 
-    let app = gh::create_root_app();
+    let state = gh::AppState::from_env().map_err(ServerError::InvalidConfig)?;
+    let app = gh::create_root_app(state);
 
     let tcp_listener = get_tcp_listener().await?;
     let server = axum::serve(tcp_listener, app.into_make_service())
