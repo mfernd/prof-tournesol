@@ -1,0 +1,20 @@
+name: Build and Push `controller` Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version of the image'
+        required: true
+        type: string
+
+jobs:
+  build_and_push:
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable-docker.yaml
+    with:
+      path: ./tournesol/controller
+      image: ghcr.io/${{ github.repository }}/controller
+      version: ${{ github.event.inputs.version }}
