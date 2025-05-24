@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version of the image'
-        required: true
+        description: 'Version of the image (ex: 0.1.0)'
         type: string
 
 jobs:
