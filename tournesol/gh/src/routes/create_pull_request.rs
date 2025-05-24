@@ -25,15 +25,13 @@ pub struct PullRequest {
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct File {
-    /// Action to perform on the file (update/create)
-    action: FileAction,
     /// Path to the file in the repository
     path: String,
     /// Content of the file
     content: String,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug)]
 pub enum FileAction {
     Create,
     Update,
@@ -95,7 +93,20 @@ pub async fn create_pull_request_handler(
 
     // Create changes
     for file in req.pr.files {
-        let new_file = match file.action {
+        let action: FileAction = if repo_handler
+            .get_content()
+            .path(&file.path)
+            .send()
+            .await
+            .is_ok()
+        {
+            info!(file_path = ?file.path, "file already exists, updating");
+            FileAction::Update
+        } else {
+            info!(file_path = ?file.path, "file does not exist, creating");
+            FileAction::Create
+        };
+        let new_file = match action {
             FileAction::Create => {
                 let commit_message = format!("fix: created file {}", file.path);
                 repo_handler.create_file(file.path, commit_message, file.content)
@@ -138,7 +149,7 @@ pub async fn create_pull_request_handler(
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
     }
-    info!(new_branch = ?new_branch.url.path(), "changes applied");
+    info!(new_branch = ?new_branch_name, "changes applied");
 
     let pr_created = pr_handler
         .create(&req.pr.title, &new_branch_name, default_branch)
