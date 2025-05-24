@@ -15,7 +15,7 @@ pub async fn create_issue_handler(
     State(state): State<AppState>,
     Json(req): Json<CreateIssueBody>,
 ) -> Result<String, axum::http::StatusCode> {
-    info!(req = ?req, "create issue request");
+    info!("creating issue \"{}\" in repo {}/{}", req.title, req.owner, req.repo);
 
     let octocrab = crate::utils::get_octocrab_client_for_repo(
         state.github_app_id,
