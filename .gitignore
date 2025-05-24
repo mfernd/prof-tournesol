@@ -2,3 +2,12 @@
 !.env.example
 .vscode/
 target/
+
+# tts-service
+tournesol/text-to-speech-service/venv
+tournesol/text-to-speech-service/files
+tournesol/text-to-speech-service/src/__pycache__
+
+# discord_bot
+tournesol/discord_bot/venv
+tournesol/discord_bot/__pycache__

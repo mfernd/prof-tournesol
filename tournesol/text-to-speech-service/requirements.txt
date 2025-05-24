@@ -1,0 +1,8 @@
+fastapi[standard]
+kokoro
+dotenv
+torch
+datasets
+soundfile
+IPython
+discord
