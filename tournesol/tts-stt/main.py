@@ -21,6 +21,7 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN")
 USER_ID = int(os.getenv("USER_ID", 0))
 OPENAI_URL = os.getenv("OPENAI_URL", 'http://localhost:8008/v1/')
+GITHUB_SERVICE_URL = os.getenv("GITHUB_SERVICE_URL", "http://localhost:8888")
 RECEIVED_FILE_PATH = 'files/received_audios'
 SENT_FILE_PATH = 'files/sent_audios'
 VOICE_FILE = 'recording'
@@ -107,6 +108,6 @@ async def webhook(file: UploadFile = File(...), author: str = Form(...), referen
         logging.exception("An error occurred while processing the user transcript with AI.")
         raise HTTPException(status_code=500, detail="Internal server error while processing AI response.")
 
-    create_issue(f"[AUTOMATED ISSUE] - {reference_id}", conversations[reference_id])
+    create_issue(GITHUB_SERVICE_URL, f"[AUTOMATED ISSUE] - {reference_id}", conversations[reference_id])
 
     return {"status": 200, "message": "File received and parsed"}
