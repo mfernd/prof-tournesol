@@ -51,11 +51,9 @@ service:
 # env variables
 env:
   - name: USER_ID
-    value: 319687726163165185
+    value: '319687726163165185'
   - name: OPENAI_URL
-    value: http://localhost:9999/webhook
-  - name: GITHUB_SERVICE_URL
-    value: http://localhost:9999/webhook
+    value: http://kubeai.kubeai.svc.cluster.local:80/openai/v1/chat/completions
 
 # TOKEN secret
 secret:

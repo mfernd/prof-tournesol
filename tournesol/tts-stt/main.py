@@ -11,7 +11,6 @@ from services.text_to_speech import is_tts_model_loaded, load_tts_model, text_to
 from services.speech_to_text import is_stt_model_loaded, load_stt_model, speech_to_text
 from services.message_sender import send_voice_dm
 from services.openai_client import prompt_ai
-from services.create_issue import create_issue
 
 from models.TextModel import Text
 
@@ -21,7 +20,6 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN")
 USER_ID = int(os.getenv("USER_ID", 0))
 OPENAI_URL = os.getenv("OPENAI_URL", 'http://localhost:8008/v1/')
-GITHUB_SERVICE_URL = os.getenv("GITHUB_SERVICE_URL", "http://localhost:8888")
 RECEIVED_FILE_PATH = 'files/received_audios'
 SENT_FILE_PATH = 'files/sent_audios'
 VOICE_FILE = 'recording'
@@ -108,6 +106,11 @@ async def webhook(file: UploadFile = File(...), author: str = Form(...), referen
         logging.exception("An error occurred while processing the user transcript with AI.")
         raise HTTPException(status_code=500, detail="Internal server error while processing AI response.")
 
-    create_issue(GITHUB_SERVICE_URL, f"[AUTOMATED ISSUE] - {reference_id}", conversations[reference_id])
+    with open(f'files/conversation_logs.txt', 'w') as f:
+        f.write("------------------------------")
+        f.write(f"Reference ID: {reference_id}\n")
+        f.write(f"AI Message: {conversations[reference_id]['ai_message']}\n")
+        f.write(f"User Reply: {conversations[reference_id]['user_reply']}\n")
+        f.write(f"User Answer: {conversations[reference_id]['user_answer']}\n")
 
     return {"status": 200, "message": "File received and parsed"}
