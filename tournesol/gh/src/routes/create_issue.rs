@@ -1,4 +1,4 @@
-use crate::{github::GitHubClient, AppState};
+use crate::{AppState, github::GitHubClient};
 use axum::{Json, extract::State};
 use tracing::{error, info};
 

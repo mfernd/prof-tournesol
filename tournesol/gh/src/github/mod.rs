@@ -1,5 +1,5 @@
-pub const GITHUB_APP_NAME: &str = "Prof. Tournesol";
-pub const GITHUB_APP_EMAIL: &str = "1299312+prof-tournesol[bot]@users.noreply.github.com";
+const GITHUB_APP_NAME: &str = "Prof. Tournesol";
+const GITHUB_APP_EMAIL: &str = "1299312+prof-tournesol[bot]@users.noreply.github.com";
 
 mod client;
 mod utils;
