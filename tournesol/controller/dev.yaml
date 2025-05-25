@@ -1,34 +1,42 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: result-controller
+  name: prof-tournesol-controller
   namespace: k8sgpt-operator-system
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: result-controller
+      app: prof-tournesol-controller
   template:
     metadata:
       labels:
-        app: result-controller
+        app: prof-tournesol-controller
     spec:
-      serviceAccountName: result-controller-sa
+      serviceAccountName: prof-tournesol-controller-sa
       containers:
         - name: controller
           image: result-controller:latest # Use the local image name
           imagePullPolicy: IfNotPresent # Changed to IfNotPresent
+          env:
+            - name: GITHUB_OWNER
+              value: "mfernd"
+            - name: GITHUB_REPO
+              value: "prof-tournesol"
+            - name: GITHUB_BRANCH
+              value: "main"
+
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: result-controller-sa
+  name: prof-tournesol-controller-sa
   namespace: k8sgpt-operator-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: result-controller-role
+  name: prof-tournesol-controller-role
 rules:
   - apiGroups: ["core.k8sgpt.ai"]
     resources: ["results"]
@@ -43,12 +51,12 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: result-controller-rolebinding
+  name: prof-tournesol-controller-rolebinding
 subjects:
   - kind: ServiceAccount
-    name: result-controller-sa
+    name: prof-tournesol-controller-sa
     namespace: k8sgpt-operator-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: result-controller-role
+  name: prof-tournesol-controller-role

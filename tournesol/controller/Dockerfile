@@ -11,6 +11,9 @@ RUN go build -o controller
 
 FROM alpine:3.18
 
+# Install wget
+RUN apk add --no-cache wget ca-certificates
+
 WORKDIR /app
 COPY --from=builder /app/controller /app/controller
 
