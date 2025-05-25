@@ -9,6 +9,9 @@ spec:
     backend: localai
     baseUrl: http://kubeai.kubeai.svc.cluster.local:80/openai/v1
     enabled: true
+  filters:
+    - Pod
+    - Deployment
   version: v0.4.13
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -16,9 +19,9 @@ kind: ClusterRole
 metadata:
   name: k8sgpt-list-configmaps
 rules:
-- apiGroups: [""]
-  resources: ["configmaps"]
-  verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -29,6 +32,6 @@ roleRef:
   kind: ClusterRole
   name: k8sgpt-list-configmaps
 subjects:
-- kind: ServiceAccount
-  name: k8sgpt-k8sgpt-operator-system
-  namespace: k8sgpt-operator-system
+  - kind: ServiceAccount
+    name: k8sgpt-k8sgpt-operator-system
+    namespace: k8sgpt-operator-system
