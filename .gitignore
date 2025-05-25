@@ -4,9 +4,11 @@
 target/
 
 # tts-service
-tournesol/text-to-speech-service/venv
-tournesol/text-to-speech-service/files
-tournesol/text-to-speech-service/src/__pycache__
+tournesol/tts-stt/venv
+tournesol/tts-stt/files
+tournesol/tts-stt/__pycache__
+tournesol/tts-stt/models/__pycache__
+tournesol/tts-stt/services/__pycache__
 
 # discord_bot
 tournesol/discord_bot/venv
