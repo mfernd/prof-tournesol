@@ -3,8 +3,8 @@ use axum_extra::routing::RouterExt;
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 
+pub mod github;
 mod routes;
-mod utils;
 
 pub fn create_root_app(state: AppState) -> Router {
     Router::new()

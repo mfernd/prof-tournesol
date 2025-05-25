@@ -46,7 +46,7 @@ pub async fn create_pull_request_handler(
     let repo_name = req.repo;
     let new_branch_name = format!("fix/prof-tournesol/{}", uuid::Uuid::now_v7());
 
-    let octocrab = crate::utils::get_octocrab_client_for_repo(
+    let octocrab = crate::github::get_octocrab_client_for_repo(
         state.github_app_id,
         &state.github_app_private_key,
         &owner,
@@ -138,8 +138,8 @@ pub async fn create_pull_request_handler(
         new_file
             .branch(&new_branch_name)
             .author(CommitAuthor {
-                name: crate::utils::GITHUB_APP_NAME.into(),
-                email: crate::utils::GITHUB_APP_EMAIL.into(),
+                name: crate::github::GITHUB_APP_NAME.into(),
+                email: crate::github::GITHUB_APP_EMAIL.into(),
                 date: None,
             })
             .send()

@@ -1,4 +1,4 @@
-use crate::AppState;
+use crate::{github::GitHubClient, AppState};
 use axum::{Json, extract::State};
 use tracing::{error, info};
 
@@ -15,9 +15,12 @@ pub async fn create_issue_handler(
     State(state): State<AppState>,
     Json(req): Json<CreateIssueBody>,
 ) -> Result<String, axum::http::StatusCode> {
-    info!("creating issue \"{}\" in repo {}/{}", req.title, req.owner, req.repo);
+    info!(
+        "creating issue \"{}\" in repo {}/{}",
+        req.title, req.owner, req.repo
+    );
 
-    let octocrab = crate::utils::get_octocrab_client_for_repo(
+    let octocrab = crate::github::get_octocrab_client_for_repo(
         state.github_app_id,
         &state.github_app_private_key,
         &req.owner,
@@ -29,11 +32,10 @@ pub async fn create_issue_handler(
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let issue = octocrab
-        .issues(req.owner, req.repo)
-        .create(req.title)
-        .body(req.body)
-        .send()
+    let gh_client = GitHubClient::new(octocrab, req.owner, req.repo);
+
+    let issue = gh_client
+        .create_issue(&req.title, &req.body)
         .await
         .map_err(|e| {
             error!("failed to create issue: {:?}", e);
@@ -42,7 +44,7 @@ pub async fn create_issue_handler(
     info!(
         "created the issue #{} in the repo \"{}\"",
         issue.number,
-        issue.repository_url.path()
+        issue.repository_url.path(),
     );
 
     Ok("issue created".into())
