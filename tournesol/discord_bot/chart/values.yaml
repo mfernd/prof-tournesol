@@ -51,12 +51,14 @@ service:
 # WEBHOOK_URL env
 env:
   name: WEBHOOK_URL
-  value: http://tts-stt-tts-stt-service-chart.tts-stt-svc.svc.cluster.local:8080/webhook
+  value: http://tts-stt-tts-stt-service-chart.tournesol:8080/webhook
+
 
 # TOKEN secret
-secret:
-  name: discord-token
-  value: CHANGEME
+discord_bot:
+  secret:
+    name: discord-token
+    value: CHANGEME
 
 # This block is for setting up the ingress for more information can be found here: https://kubernetes.io/docs/concepts/services-networking/ingress/
 ingress:

@@ -22,11 +22,21 @@ releases:
     namespace: argocd
     chart: argo/argo-cd
     version: 5.41.0
-  - name: controller
-    namespace: tournesol
-    chart: ./tournesol/controller/chart
+  # - name: controller
+  #   namespace: tournesol
+  #   chart: ./tournesol/controller/chart
   - name: gh-service
     namespace: tournesol
     chart: ./tournesol/gh/chart
-    values: 
+    values:
+      - values.yaml
+  - name: tts-stt
+    namespace: tournesol
+    chart: ./tournesol/tts-stt/chart
+    values:
+      - values.yaml
+  - name: discordbot
+    namespace: tournesol
+    chart: ./tournesol/discord_bot/chart
+    values:
       - values.yaml

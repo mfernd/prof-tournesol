@@ -1,12 +1,11 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-    name: tts-stt-pvc
-    namespace: tts-stt-svc
+  name: tts-stt-pvc
 spec:
-    accessModes:
-        - ReadWriteOnce
-    resources:
-        requests:
-            storage: 1Gi
-    storageClassName: local-path
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: local-path

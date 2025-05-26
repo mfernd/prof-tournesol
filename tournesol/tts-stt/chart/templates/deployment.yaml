@@ -45,7 +45,7 @@ spec:
             - name: TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.secret.name }}
+                  name: {{ .Values.ttsstt.secret.name }}
                   key: TOKEN
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}

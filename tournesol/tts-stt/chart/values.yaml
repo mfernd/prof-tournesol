@@ -56,9 +56,10 @@ env:
     value: http://kubeai.kubeai.svc.cluster.local:80/openai/v1/
 
 # TOKEN secret
-secret:
-  name: discord-token
-  value: CHANGEME
+ttsstt:
+  secret:
+    name: discord-token
+    value: CHANGEME
 
 # This block is for setting up the ingress for more information can be found here: https://kubernetes.io/docs/concepts/services-networking/ingress/
 ingress:

@@ -46,7 +46,7 @@ spec:
             - name: TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.secret.name }}
+                  name: {{ .Values.discord_bot.secret.name }}
                   key: TOKEN
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
