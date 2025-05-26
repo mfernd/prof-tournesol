@@ -4,3 +4,13 @@ gh:
     -----BEGIN RSA PRIVATE KEY-----
     Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
     -----END RSA PRIVATE KEY-----
+
+discord_bot:
+  secret:
+    name: discord-token-discord
+    value: blabla
+
+ttsstt:
+  secret:
+    name: discord-token-ttsstt
+    value: blabla

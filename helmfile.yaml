@@ -22,9 +22,12 @@ releases:
     namespace: argocd
     chart: argo/argo-cd
     version: 5.41.0
-  # - name: controller
-  #   namespace: tournesol
-  #   chart: ./tournesol/controller/chart
+  - name: controller
+    namespace: tournesol
+    chart: ./tournesol/controller/chart
+    set:
+      - name: env.GITHUB_TOKEN
+        value: {{ requiredEnv "GITHUB_TOKEN" }}
   - name: gh-service
     namespace: tournesol
     chart: ./tournesol/gh/chart
