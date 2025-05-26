@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: postgres-oom
+
+helmCharts:
+- name: postgresql
+  repo: registry-1.docker.io/bitnamicharts
+  version: 16.4.5
+  valuesInline:
+    primary:
+      resources:
+        requests:
+          cpu: "0.2"
+          memory: "6Mi"
+        limits:
+          cpu: "0.3"
+          memory: "8Mi"
