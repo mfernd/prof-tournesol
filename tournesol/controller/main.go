@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,10 +62,11 @@ var (
 	aiTimeoutSecs = getEnvIntOrDefault("AI_TIMEOUT_SECONDS", 60)
 	aiMaxRetries  = getEnvIntOrDefault("AI_MAX_RETRIES", 3)
 	aiHealthCheck = getEnvBoolOrDefault("AI_HEALTH_CHECK", true)
-	useFallback   = getEnvBoolOrDefault("USE_FALLBACK", true)
-	httpClient    = &http.Client{Timeout: time.Duration(aiTimeoutSecs) * time.Second}
-	githubApiUrl  = "https://api.github.com"
-	ghServiceUrl  = getEnvOrDefault("GH_SERVICE_URL", "http://gh-service.tournesol:80")
+	useFallback      = getEnvBoolOrDefault("USE_FALLBACK", true)
+	httpClient       = &http.Client{Timeout: time.Duration(aiTimeoutSecs) * time.Second}
+	githubApiUrl     = "https://api.github.com"
+	ghServiceUrl     = getEnvOrDefault("GH_SERVICE_URL", "http://gh-service.tournesol:80")
+	ttsServiceUrl    = getEnvOrDefault("TTS_SERVICE_URL", "http://tts-stt-tts-stt-service-chart.tournesol:8080")
 
 	// Health check state
 	endpointHealthy     = false
@@ -191,17 +193,30 @@ func handleResult(obj *unstructured.Unstructured) {
 	for _, update := range fileUpdates {
 		fmt.Printf("- File: %s (%d bytes)\n", update.Path, len(update.Content))
 	}
-
+	
 	// Send updates to gh-service to create a PR
 	if len(fileUpdates) > 0 {
 		err = sendToGHService(ctx, fileUpdates, diag)
 		if err != nil {
 			fmt.Printf("Error sending to gh-service: %v\n", err)
+			// Fall back to creating an issue if PR creation fails
+			fmt.Printf("Falling back to creating an issue instead\n")
+			err = createGitHubIssue(ctx, diag)
+			if err != nil {
+				fmt.Printf("Error creating GitHub issue: %v\n", err)
+			}
 		} else {
 			fmt.Printf("Successfully sent updates to gh-service for PR creation\n")
 		}
 	} else {
-		fmt.Printf("No file updates to send to gh-service\n")
+		fmt.Printf("No file updates to send to gh-service - creating issue instead\n")
+		// Create an issue since AI couldn't provide a fix
+		err = createGitHubIssue(ctx, diag)
+		if err != nil {
+			fmt.Printf("Error creating GitHub issue: %v\n", err)
+		} else {
+			fmt.Printf("Successfully created GitHub issue for the problem\n")
+		}
 	}
 }
 
@@ -632,6 +647,8 @@ func extractFileUpdatesFromResponse(responseData map[string]interface{}) ([]File
 	if !ok {
 		return nil, fmt.Errorf("invalid content format")
 	}
+	
+	fmt.Printf("AI Response Preview: %s\n", truncateString(content, 200))
 
 	// Try to extract JSON content - find the first [ and last ]
 	var jsonContent string
@@ -644,15 +661,108 @@ func extractFileUpdatesFromResponse(responseData map[string]interface{}) ([]File
 		// If no brackets found, try the whole content
 		jsonContent = content
 	}
-
+	
+	// Clean up common JSON formatting issues
+	jsonContent = cleanupJSON(jsonContent)
+	
 	// Try to parse the JSON content
 	var fileUpdates []FileUpdate
 	err := json.Unmarshal([]byte(jsonContent), &fileUpdates)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal file updates: %w", err)
+		// If parsing fails, try to extract individual file updates
+		fileUpdates, err = extractFileUpdatesManually(content)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal file updates: %w", err)
+		}
 	}
 
 	return fileUpdates, nil
+}
+
+// cleanupJSON attempts to clean up common JSON formatting issues
+func cleanupJSON(input string) string {
+	// Replace escaped newlines with actual newlines
+	cleaned := strings.ReplaceAll(input, "\\n", "\n")
+	
+	// Fix newlines within string literals
+	lines := strings.Split(cleaned, "\n")
+	var inString bool
+	var result strings.Builder
+	
+	for i, line := range lines {
+		if i > 0 {
+			// Only add newlines between lines if we're not in the middle of a string
+			if !inString {
+				result.WriteString("\n")
+			} else {
+				// Inside a string, replace newline with \\n
+				result.WriteString("\\n")
+			}
+		}
+		
+		// Count quotes to track if we're in a string
+		for _, char := range line {
+			if char == '"' {
+				// Toggle string state only if the quote isn't escaped
+				if len(result.String()) == 0 || result.String()[result.Len()-1] != '\\' {
+					inString = !inString
+				}
+			}
+		}
+		
+		result.WriteString(line)
+	}
+	
+	return result.String()
+}
+
+// extractFileUpdatesManually tries to extract file updates by looking for patterns
+func extractFileUpdatesManually(content string) ([]FileUpdate, error) {
+	// Find all path/content pairs in the response
+	pathPattern := `"path"\s*:\s*"([^"]+)"`
+	contentPattern := `"content"\s*:\s*"([^"]*)"`
+	
+	pathMatches := regexp.MustCompile(pathPattern).FindAllStringSubmatch(content, -1)
+	contentMatches := regexp.MustCompile(contentPattern).FindAllStringSubmatch(content, -1)
+	
+	if len(pathMatches) == 0 || len(contentMatches) == 0 {
+		return nil, fmt.Errorf("could not find path/content pairs in response")
+	}
+	
+	if len(pathMatches) != len(contentMatches) {
+		return nil, fmt.Errorf("mismatched number of paths and contents")
+	}
+	
+	var updates []FileUpdate
+	for i := 0; i < len(pathMatches); i++ {
+		if len(pathMatches[i]) > 1 && len(contentMatches[i]) > 1 {
+			path := pathMatches[i][1]
+			// Unescape content string
+			content := contentMatches[i][1]
+			content = strings.ReplaceAll(content, "\\n", "\n")
+			content = strings.ReplaceAll(content, "\\\"", "\"")
+			content = strings.ReplaceAll(content, "\\\\", "\\")
+			
+			updates = append(updates, FileUpdate{
+				Path:    path,
+				Content: content,
+			})
+		}
+	}
+	
+	if len(updates) == 0 {
+		return nil, fmt.Errorf("no valid file updates extracted")
+	}
+	
+	return updates, nil
+}
+
+// truncateString truncates a string to the specified length and adds "..." if truncated
+func truncateString(s string, maxLength int) string {
+	if len(s) <= maxLength {
+		return s
+	}
+	return s[:maxLength] + "..."
 }
 
 // tryAIEndpoint attempts to call the AI endpoint once
@@ -984,10 +1094,10 @@ func sendToGHService(ctx context.Context, fileUpdates []FileUpdate, diag diagnos
 	fmt.Printf("Preparing to send updates to gh-service at %s\n", ghServiceUrl)
 
 	// Create a title for the PR with emoji
-	title := fmt.Sprintf("fix: Fixed %s issue in namespace %s", diag.name, diag.namespace)
+	title := fmt.Sprintf("fix: Fixed %s issue in namespace %s! 😄😮", diag.name, diag.namespace)
 
 	// Create PR body with diagnostic information
-	body := fmt.Sprintf("This PR fixes an issue detected by K8sGPT for %s/%s in namespace %s. 🌻\n\n",
+	body := fmt.Sprintf("This PR fixes an issue detected by K8sGPT for %s/%s in namespace %s. 😸🌻\n\n",
 		diag.kind, diag.name, diag.namespace)
 	body += fmt.Sprintf("**Error:** %s\n\n", diag.error)
 	body += fmt.Sprintf("**Solution:** %s\n\n", diag.solution)
@@ -1002,7 +1112,7 @@ func sendToGHService(ctx context.Context, fileUpdates []FileUpdate, diag diagnos
 		if !strings.HasPrefix(path, fmt.Sprintf("apps/%s/", diag.namespace)) {
 			path = fmt.Sprintf("apps/%s/%s", diag.namespace, path)
 		}
-		
+
 		ghFiles[i] = map[string]string{
 			"path":    path,
 			"content": update.Content,
@@ -1057,6 +1167,131 @@ func sendToGHService(ctx context.Context, fileUpdates []FileUpdate, diag diagnos
 	return nil
 }
 
+// createGitHubIssue creates a GitHub issue for problems that couldn't be automatically fixed
+func createGitHubIssue(ctx context.Context, diag diagnostic) error {
+	fmt.Printf("Creating GitHub issue via gh-service at %s\n", ghServiceUrl)
+
+	// Create issue title with relevant information
+	title := fmt.Sprintf("🚨 Unfixable issue with %s in namespace %s", diag.name, diag.namespace)
+
+	// Create detailed body with all diagnostic information
+	body := fmt.Sprintf("## Kubernetes Issue Detected\n\n")
+	body += fmt.Sprintf("An issue was detected by K8sGPT that couldn't be automatically fixed:\n\n")
+	body += fmt.Sprintf("- **Resource Kind:** %s\n", diag.kind)
+	body += fmt.Sprintf("- **Resource Name:** %s\n", diag.name)
+	body += fmt.Sprintf("- **Namespace:** %s\n\n", diag.namespace)
+	body += fmt.Sprintf("### Error\n\n%s\n\n", diag.error)
+	body += fmt.Sprintf("### Suggested Solution\n\n%s\n\n", diag.solution)
+	body += "This issue requires manual intervention. The AI assistant was unable to generate an automatic fix."
+
+	// Create the issue payload
+	issuePayload := map[string]interface{}{
+		"owner": githubOwner,
+		"repo":  githubRepo,
+		"title": title,
+		"body":  body,
+	}
+
+	// Marshal to JSON
+	jsonData, err := json.Marshal(issuePayload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal issue payload: %w", err)
+	}
+
+	// Create request to gh-service
+	reqUrl := fmt.Sprintf("%s/issues", ghServiceUrl)
+	req, err := http.NewRequestWithContext(ctx, "POST", reqUrl, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create issue request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send request
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send issue request to gh-service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read issue response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("gh-service returned error status %d when creating issue: %s", resp.StatusCode, respBody)
+	}
+
+	fmt.Printf("GitHub issue created successfully: %s\n", respBody)
+
+	// Send the issue to TTS service
+	err = sendToTTSService(ctx, diag)
+	if err != nil {
+		fmt.Printf("Warning: Failed to send to TTS service: %v\n", err)
+		// Continue despite TTS error
+	}
+
+	return nil
+}
+
+// sendToTTSService sends the diagnostic information to the TTS service
+func sendToTTSService(ctx context.Context, diag diagnostic) error {
+	fmt.Printf("Sending notification to TTS service at %s (40 second timeout)\n", ttsServiceUrl)
+
+	// Create a description of the problem for TTS
+	problem := fmt.Sprintf("A Kubernetes issue was detected with %s '%s' in namespace '%s'. ",
+		diag.kind, diag.name, diag.namespace)
+	problem += fmt.Sprintf("The error is: %s ", diag.error)
+	problem += fmt.Sprintf("The suggested solution is: %s", diag.solution)
+
+	// Create the TTS payload
+	ttsPayload := map[string]interface{}{
+		"prompt": problem,
+	}
+
+	// Marshal to JSON
+	jsonData, err := json.Marshal(ttsPayload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal TTS payload: %w", err)
+	}
+
+	// Create request to TTS service
+	reqUrl := fmt.Sprintf("%s/tts", ttsServiceUrl)
+	req, err := http.NewRequestWithContext(ctx, "POST", reqUrl, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create TTS request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Create a client with a longer timeout specifically for TTS
+	ttsClient := &http.Client{Timeout: 40 * time.Second}
+
+	// Send request
+	resp, err := ttsClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request to TTS service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read TTS response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("TTS service returned error status %d: %s", resp.StatusCode, respBody)
+	}
+
+	fmt.Printf("TTS notification sent successfully\n")
+	return nil
+}
+
 func main() {
 	// Log startup configuration
 	fmt.Printf("Prof Tournesol controller starting with configuration:\n")
@@ -1072,6 +1307,7 @@ func main() {
 
 	// Log the GH service URL configuration
 	fmt.Printf("- GH Service URL: %s\n", ghServiceUrl)
+	fmt.Printf("- TTS Service URL: %s\n", ttsServiceUrl)
 
 	// Use in-cluster config
 	config, err := clientcmd.BuildConfigFromFlags("", "")
