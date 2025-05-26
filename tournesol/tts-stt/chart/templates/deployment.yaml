@@ -41,6 +41,8 @@ spec:
               containerPort: {{ .Values.service.port }}
               protocol: TCP
           env:
+            - name: USER_ID
+              value: {{ .Values.ttsstt.discordUserId | quote}}
             {{- toYaml .Values.env | nindent 12 }}
             - name: TOKEN
               valueFrom:

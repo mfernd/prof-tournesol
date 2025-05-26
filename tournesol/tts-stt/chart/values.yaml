@@ -50,13 +50,12 @@ service:
 
 # env variables
 env:
-  - name: USER_ID
-    value: '319687726163165185'
   - name: OPENAI_URL
     value: http://kubeai.kubeai.svc.cluster.local:80/openai/v1/
 
 # TOKEN secret
 ttsstt:
+  discordUserId: 'CHANGEME'
   secret:
     name: discord-token
     value: CHANGEME
