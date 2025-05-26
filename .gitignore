@@ -13,3 +13,5 @@ tournesol/tts-stt/services/__pycache__
 # discord_bot
 tournesol/discord_bot/venv
 tournesol/discord_bot/__pycache__
+
+values.yaml

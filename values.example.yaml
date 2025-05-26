@@ -1,0 +1,6 @@
+gh:
+  githubAppId: "1234567"
+  githubAppPrivateKey: |
+    -----BEGIN RSA PRIVATE KEY-----
+    Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+    -----END RSA PRIVATE KEY-----
