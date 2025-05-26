@@ -51,7 +51,7 @@ service:
 # WEBHOOK_URL env
 env:
   name: WEBHOOK_URL
-  value: http://localhost:8888/webhook
+  value: http://tts-stt-tts-stt-service-chart.tts-stt-svc.svc.cluster.local:8080/webhook
 
 # TOKEN secret
 secret:

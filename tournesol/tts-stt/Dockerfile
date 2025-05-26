@@ -12,6 +12,10 @@ RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
 COPY . /code
 
+RUN mkdir -p /code/files
+RUN mkdir -p /code/files/sent_audios
+RUN mkdir -p /code/files/received_audios
+
 EXPOSE 8080
 
 CMD ["fastapi", "run", "main.py", "--port", "8080"]
