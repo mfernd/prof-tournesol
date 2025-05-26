@@ -1,0 +1,36 @@
+# PostgreSQL Helm Values Configuration
+# Intentionally low memory limits to demonstrate OOM behavior
+
+global:
+  postgresql:
+    auth:
+      postgresPassword: "postgres"
+      username: "user"
+      password: "password"
+      database: "my_database"
+
+# Primary PostgreSQL configuration
+primary:
+  resources:
+    requests:
+      cpu: "0.2"
+      memory: "6Mi"
+    limits:
+      cpu: "0.3"
+      memory: "8Mi"
+
+# Enable metrics
+metrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: "0.1"
+      memory: "32Mi"
+    limits:
+      cpu: "0.2"
+      memory: "64Mi"
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 5432

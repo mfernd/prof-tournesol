@@ -21,7 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
+	dynamicinformer "k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -51,20 +51,21 @@ type FileUpdate struct {
 
 // Configuration for GitHub and AI endpoint
 var (
-	githubOwner      = getEnvOrDefault("GITHUB_OWNER", "mfernd")
-	githubRepo       = getEnvOrDefault("GITHUB_REPO", "prof-tournesol")
-	githubBranch     = getEnvOrDefault("GITHUB_BRANCH", "main")
-	githubToken      = getEnvOrDefault("GITHUB_TOKEN", "")
-	aiBaseUrl        = getEnvOrDefault("AI_BASE_URL", "http://kubeai.kubeai.svc.cluster.local:80/openai/v1")
-	aiEndpointUrl    = aiBaseUrl + "/chat/completions"
-	aiModel          = getEnvOrDefault("AI_MODEL", "gemma3-1b-cpu")
-	aiTimeoutSecs    = getEnvIntOrDefault("AI_TIMEOUT_SECONDS", 60)
-	aiMaxRetries     = getEnvIntOrDefault("AI_MAX_RETRIES", 3)
-	aiHealthCheck    = getEnvBoolOrDefault("AI_HEALTH_CHECK", true)
-	useFallback      = getEnvBoolOrDefault("USE_FALLBACK", true)
-	httpClient       = &http.Client{Timeout: time.Duration(aiTimeoutSecs) * time.Second}
-	githubApiUrl     = "https://api.github.com"
-	
+	githubOwner   = getEnvOrDefault("GITHUB_OWNER", "mfernd")
+	githubRepo    = getEnvOrDefault("GITHUB_REPO", "prof-tournesol")
+	githubBranch  = getEnvOrDefault("GITHUB_BRANCH", "main")
+	githubToken   = getEnvOrDefault("GITHUB_TOKEN", "")
+	aiBaseUrl     = getEnvOrDefault("AI_BASE_URL", "http://kubeai.kubeai.svc.cluster.local:80/openai/v1")
+	aiEndpointUrl = aiBaseUrl + "/chat/completions"
+	aiModel       = getEnvOrDefault("AI_MODEL", "gemma3-1b-cpu")
+	aiTimeoutSecs = getEnvIntOrDefault("AI_TIMEOUT_SECONDS", 60)
+	aiMaxRetries  = getEnvIntOrDefault("AI_MAX_RETRIES", 3)
+	aiHealthCheck = getEnvBoolOrDefault("AI_HEALTH_CHECK", true)
+	useFallback   = getEnvBoolOrDefault("USE_FALLBACK", true)
+	httpClient    = &http.Client{Timeout: time.Duration(aiTimeoutSecs) * time.Second}
+	githubApiUrl  = "https://api.github.com"
+	ghServiceUrl  = getEnvOrDefault("GH_SERVICE_URL", "http://gh-service.tournesol:80")
+
 	// Health check state
 	endpointHealthy     = false
 	endpointHealthMutex = &sync.Mutex{}
@@ -107,7 +108,7 @@ func handleResult(obj *unstructured.Unstructured) {
 	if resourceID == "" {
 		resourceID = name // Fallback to name if UID isn't available
 	}
-	
+
 	// Check if we've already processed this resource
 	processedMutex.Lock()
 	if processed, exists := processedResources[resourceID]; exists && processed {
@@ -118,12 +119,12 @@ func handleResult(obj *unstructured.Unstructured) {
 	// Mark as being processed
 	processedResources[resourceID] = true
 	processedMutex.Unlock()
-	
+
 	var diag diagnostic
 	// Get the resource name which might include namespace in format "namespace/name"
 	resourceName, _, _ := unstructured.NestedString(obj.Object, "spec", "name")
 	diag.kind, _, _ = unstructured.NestedString(obj.Object, "spec", "kind")
-	
+
 	// Parse namespace from the resource name (format: "namespace/name")
 	if resourceName != "" && strings.Contains(resourceName, "/") {
 		parts := strings.SplitN(resourceName, "/", 2)
@@ -190,6 +191,18 @@ func handleResult(obj *unstructured.Unstructured) {
 	for _, update := range fileUpdates {
 		fmt.Printf("- File: %s (%d bytes)\n", update.Path, len(update.Content))
 	}
+
+	// Send updates to gh-service to create a PR
+	if len(fileUpdates) > 0 {
+		err = sendToGHService(ctx, fileUpdates, diag)
+		if err != nil {
+			fmt.Printf("Error sending to gh-service: %v\n", err)
+		} else {
+			fmt.Printf("Successfully sent updates to gh-service for PR creation\n")
+		}
+	} else {
+		fmt.Printf("No file updates to send to gh-service\n")
+	}
 }
 
 // GitHub API response types
@@ -212,78 +225,78 @@ func fetchGitHubFiles(ctx context.Context, namespace string) (map[string]string,
 	// Path in the repo to look for files - only check apps/<namespace>
 	dirPath := fmt.Sprintf("apps/%s", namespace)
 	fmt.Printf("Looking for files in GitHub path: %s\n", dirPath)
-	
+
 	// First, get the directory contents to find all files
 	files, err := fetchDirectoryContents(ctx, dirPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch files from %s: %w", dirPath, err)
 	}
-	
+
 	// Log success if we found files
 	if len(files) > 0 {
 		fmt.Printf("Successfully found %d files in %s\n", len(files), dirPath)
 	} else {
 		fmt.Printf("No files found in %s\n", dirPath)
 	}
-	
+
 	return files, nil
 }
 
 // fetchDirectoryContents uses GitHub API to get contents of a directory
 func fetchDirectoryContents(ctx context.Context, dirPath string) (map[string]string, error) {
 	files := make(map[string]string)
-	
+
 	// First get the directory listing
-	contentsURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", 
+	contentsURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s",
 		githubApiUrl, githubOwner, githubRepo, dirPath, githubBranch)
-	
+
 	fmt.Printf("Fetching directory contents from: %s\n", contentsURL)
-	
+
 	// Create request with GitHub API token if available
 	req, err := http.NewRequestWithContext(ctx, "GET", contentsURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
-	
+
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	if githubToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("token %s", githubToken))
 	}
-	
+
 	// Send the request
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching directory contents: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// Check for rate limiting
 	if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-RateLimit-Remaining") == "0" {
 		resetTime := resp.Header.Get("X-RateLimit-Reset")
 		return nil, fmt.Errorf("GitHub API rate limit exceeded. Rate limit resets at %s", resetTime)
 	}
-	
+
 	// Handle 404 - directory doesn't exist
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("directory not found: %s", dirPath)
 	}
-	
+
 	// Handle other errors
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("GitHub API error (status %d): %s", resp.StatusCode, string(bodyBytes))
 	}
-	
+
 	// Parse the response
 	var contents []GitHubContent
 	if err := json.NewDecoder(resp.Body).Decode(&contents); err != nil {
 		// Try to decode as a single file instead of a directory
 		resp.Body.Close()
-		
+
 		// If it's a file, fetch it directly
 		return fetchSingleFile(ctx, dirPath)
 	}
-	
+
 	// Process each item in the directory
 	for _, item := range contents {
 		// Skip directories, only process files
@@ -293,7 +306,7 @@ func fetchDirectoryContents(ctx context.Context, dirPath string) (map[string]str
 				fmt.Printf("Warning: Failed to fetch subdirectory %s: %v\n", item.Path, err)
 				continue
 			}
-			
+
 			// Add subdirectory files to main files map
 			for name, content := range subDirFiles {
 				// Create path relative to the original directory
@@ -302,71 +315,71 @@ func fetchDirectoryContents(ctx context.Context, dirPath string) (map[string]str
 			}
 			continue
 		}
-		
+
 		// For files, fetch the content
 		fileContent, err := fetchFileContent(ctx, item.Path)
 		if err != nil {
 			fmt.Printf("Warning: Failed to fetch file %s: %v\n", item.Path, err)
 			continue
 		}
-		
+
 		// Add to files map with path relative to the requested directory
 		relativePath := strings.TrimPrefix(item.Path, dirPath+"/")
 		if relativePath == "" {
 			relativePath = item.Name
 		}
-		
+
 		files[relativePath] = fileContent
 	}
-	
+
 	// Check if we found any files
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no files found at %s", dirPath)
 	}
-	
+
 	return files, nil
 }
 
 // fetchSingleFile fetches a single file content if the path is a file, not a directory
 func fetchSingleFile(ctx context.Context, filePath string) (map[string]string, error) {
 	files := make(map[string]string)
-	
+
 	// Get file content URL
-	contentURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", 
+	contentURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s",
 		githubApiUrl, githubOwner, githubRepo, filePath, githubBranch)
-	
+
 	fmt.Printf("Fetching file content from: %s\n", contentURL)
-	
+
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, "GET", contentURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
-	
+
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	if githubToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("token %s", githubToken))
 	}
-	
+
 	// Send the request
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching file content: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// Handle errors
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("GitHub API error (status %d): %s", resp.StatusCode, string(bodyBytes))
 	}
-	
+
 	// Parse the response
 	var content GitHubContent
 	if err := json.NewDecoder(resp.Body).Decode(&content); err != nil {
 		return nil, fmt.Errorf("error decoding file content: %w", err)
 	}
-	
+
 	// Decode base64 content
 	if content.Content != "" && content.Encoding == "base64" {
 		decodedContent, err := base64.StdEncoding.DecodeString(
@@ -374,46 +387,46 @@ func fetchSingleFile(ctx context.Context, filePath string) (map[string]string, e
 		if err != nil {
 			return nil, fmt.Errorf("error decoding base64 content: %w", err)
 		}
-		
+
 		files[filepath.Base(filePath)] = string(decodedContent)
 		return files, nil
 	}
-	
+
 	return nil, errors.New("file content not available")
 }
 
 // fetchFileContent fetches the content of a single file
 func fetchFileContent(ctx context.Context, filePath string) (string, error) {
 	// Get file content URL
-	contentURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", 
+	contentURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s",
 		githubApiUrl, githubOwner, githubRepo, filePath, githubBranch)
-	
+
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, "GET", contentURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("error creating request: %w", err)
 	}
-	
+
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	if githubToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("token %s", githubToken))
 	}
-	
+
 	// Implement retry with backoff for rate limiting
 	var resp *http.Response
 	maxRetries := 3
-	
+
 	for i := 0; i < maxRetries; i++ {
 		// Send the request
 		resp, err = httpClient.Do(req)
 		if err != nil {
 			return "", fmt.Errorf("error fetching file content: %w", err)
 		}
-		
+
 		// If rate limited, wait and retry
 		if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-RateLimit-Remaining") == "0" {
 			resp.Body.Close()
-			
+
 			// Parse the reset time and wait
 			resetTimeStr := resp.Header.Get("X-RateLimit-Reset")
 			if resetTimeStr != "" {
@@ -427,31 +440,31 @@ func fetchFileContent(ctx context.Context, filePath string) (string, error) {
 					}
 				}
 			}
-			
+
 			// If we can't parse the reset time, use exponential backoff
 			waitTime := time.Duration(1<<uint(i)) * time.Second
 			fmt.Printf("Rate limited. Using exponential backoff: waiting %s before retry\n", waitTime)
 			time.Sleep(waitTime)
 			continue
 		}
-		
+
 		// Break the loop if we got a response
 		break
 	}
 	defer resp.Body.Close()
-	
+
 	// Handle errors
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("GitHub API error (status %d): %s", resp.StatusCode, string(bodyBytes))
 	}
-	
+
 	// Parse the response
 	var content GitHubContent
 	if err := json.NewDecoder(resp.Body).Decode(&content); err != nil {
 		return "", fmt.Errorf("error decoding file content: %w", err)
 	}
-	
+
 	// Decode base64 content
 	if content.Content != "" && content.Encoding == "base64" {
 		decodedContent, err := base64.StdEncoding.DecodeString(
@@ -459,19 +472,19 @@ func fetchFileContent(ctx context.Context, filePath string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("error decoding base64 content: %w", err)
 		}
-		
+
 		return string(decodedContent), nil
 	}
-	
+
 	return "", errors.New("file content not available")
 }
 
 // sendToAIEndpoint sends the files and solution to the AI endpoint and returns file updates
 func sendToAIEndpoint(ctx context.Context, files map[string]string, solution string) ([]FileUpdate, error) {
 	fmt.Printf("Preparing to send data to AI endpoint: %s\n", aiEndpointUrl)
-	fmt.Printf("Using model: %s with timeout %d seconds and max %d retries\n", 
+	fmt.Printf("Using model: %s with timeout %d seconds and max %d retries\n",
 		aiModel, aiTimeoutSecs, aiMaxRetries)
-	
+
 	// Format content for AI processing with explicit instructions for the output format
 	var content strings.Builder
 	content.WriteString(fmt.Sprintf("# Problem Solution from K8SGPT\n\n%s\n\n", solution))
@@ -481,7 +494,7 @@ func sendToAIEndpoint(ctx context.Context, files map[string]string, solution str
 		fmt.Printf("Including file in analysis: %s (%d bytes)\n", filename, len(fileContent))
 		content.WriteString(fmt.Sprintf("## %s\n```yaml\n%s\n```\n\n", filename, fileContent))
 	}
-	
+
 	// Add explicit instructions for response format
 	content.WriteString(`
 # Instructions for Response
@@ -514,8 +527,8 @@ respond with an empty array: []
 			},
 		},
 		"temperature": 0.2, // Lower temperature for more deterministic responses
-		"stream": false,
-		"max_tokens": 4096,
+		"stream":      false,
+		"max_tokens":  4096,
 	}
 
 	// Marshal to JSON
@@ -523,7 +536,7 @@ respond with an empty array: []
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal JSON payload: %w", err)
 	}
-	
+
 	// Check endpoint health if enabled
 	if aiHealthCheck {
 		healthy := checkAIEndpointHealth(ctx)
@@ -535,7 +548,7 @@ respond with an empty array: []
 
 	// Implement retry with exponential backoff
 	var responseData map[string]interface{}
-	
+
 	for attempt := 0; attempt < aiMaxRetries; attempt++ {
 		if attempt > 0 {
 			// Calculate backoff duration: 1s, 2s, 4s, etc.
@@ -543,16 +556,16 @@ respond with an empty array: []
 			if backoffTime > 30*time.Second {
 				backoffTime = 30 * time.Second
 			}
-			
-			fmt.Printf("Retry attempt %d/%d after waiting %v\n", 
+
+			fmt.Printf("Retry attempt %d/%d after waiting %v\n",
 				attempt+1, aiMaxRetries, backoffTime)
 			time.Sleep(backoffTime)
 		}
-		
+
 		// Create a new timeout context for this attempt
 		attemptCtx, cancel := context.WithTimeout(ctx, time.Duration(aiTimeoutSecs)*time.Second)
 		defer cancel()
-		
+
 		// Try to call the AI endpoint
 		resp, err := tryAIEndpoint(attemptCtx, jsonData)
 		if err == nil {
@@ -561,24 +574,24 @@ respond with an empty array: []
 			responseData = resp
 			break // Success!
 		}
-		
+
 		fmt.Printf("Attempt %d/%d failed: %v\n", attempt+1, aiMaxRetries, err)
-		
+
 		// Don't retry on certain errors
-		if strings.Contains(err.Error(), "received non-success status code") && 
-		   !strings.Contains(err.Error(), "429") && // Retry on 429 (Too Many Requests)
-		   !strings.Contains(err.Error(), "500") && // Retry on 500 (Internal Server Error)
-		   !strings.Contains(err.Error(), "502") && // Retry on 502 (Bad Gateway)
-		   !strings.Contains(err.Error(), "503") && // Retry on 503 (Service Unavailable)
-		   !strings.Contains(err.Error(), "504") {  // Retry on 504 (Gateway Timeout)
+		if strings.Contains(err.Error(), "received non-success status code") &&
+			!strings.Contains(err.Error(), "429") && // Retry on 429 (Too Many Requests)
+			!strings.Contains(err.Error(), "500") && // Retry on 500 (Internal Server Error)
+			!strings.Contains(err.Error(), "502") && // Retry on 502 (Bad Gateway)
+			!strings.Contains(err.Error(), "503") && // Retry on 503 (Service Unavailable)
+			!strings.Contains(err.Error(), "504") { // Retry on 504 (Gateway Timeout)
 			fmt.Printf("Not retrying due to non-retryable error\n")
-			
+
 			// Use fallback response after exhausting retries for this attempt
 			fmt.Printf("⚠️ Using local fallback response after non-retryable error\n")
 			return generateLocalFallbackResponse(solution, files), nil
 		}
 	}
-	
+
 	// If we got a response, try to extract the file updates
 	if responseData != nil {
 		fileUpdates, err := extractFileUpdatesFromResponse(responseData)
@@ -588,7 +601,7 @@ respond with an empty array: []
 		}
 		return fileUpdates, nil
 	}
-	
+
 	// All attempts failed, use fallback response
 	fmt.Printf("⚠️ All %d attempts failed, using local fallback response\n", aiMaxRetries)
 	return generateLocalFallbackResponse(solution, files), nil
@@ -601,44 +614,44 @@ func extractFileUpdatesFromResponse(responseData map[string]interface{}) ([]File
 	if !ok || len(choices) == 0 {
 		return nil, fmt.Errorf("no choices in response")
 	}
-	
+
 	// Get the first choice
 	choice, ok := choices[0].(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("invalid choice format")
 	}
-	
+
 	// Get the message
 	message, ok := choice["message"].(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("invalid message format")
 	}
-	
+
 	// Get the content
 	content, ok := message["content"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid content format")
 	}
-	
+
 	// Try to extract JSON content - find the first [ and last ]
 	var jsonContent string
 	startIdx := strings.Index(content, "[")
 	endIdx := strings.LastIndex(content, "]")
-	
+
 	if startIdx >= 0 && endIdx > startIdx {
 		jsonContent = content[startIdx : endIdx+1]
 	} else {
 		// If no brackets found, try the whole content
 		jsonContent = content
 	}
-	
+
 	// Try to parse the JSON content
 	var fileUpdates []FileUpdate
 	err := json.Unmarshal([]byte(jsonContent), &fileUpdates)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal file updates: %w", err)
 	}
-	
+
 	return fileUpdates, nil
 }
 
@@ -655,12 +668,12 @@ func tryAIEndpoint(ctx context.Context, jsonData []byte) (map[string]interface{}
 	endpointHealthMutex.Lock()
 	isHealthy := endpointHealthy
 	endpointHealthMutex.Unlock()
-	
+
 	if !isHealthy {
 		// Attempt connection test first (HEAD request)
 		testCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		
+
 		testReq, _ := http.NewRequestWithContext(testCtx, "HEAD", aiBaseUrl, nil)
 		fmt.Printf("Testing connectivity to AI base URL: %s\n", aiBaseUrl)
 		testResp, testErr := httpClient.Do(testReq)
@@ -677,13 +690,13 @@ func tryAIEndpoint(ctx context.Context, jsonData []byte) (map[string]interface{}
 	startTime := time.Now()
 	resp, err := httpClient.Do(req)
 	requestDuration := time.Since(startTime)
-	
+
 	if err != nil {
 		// Update endpoint health state on failure
 		updateEndpointHealth(false)
-		
-		if errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "timeout") || 
-		   strings.Contains(err.Error(), "deadline") {
+
+		if errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "timeout") ||
+			strings.Contains(err.Error(), "deadline") {
 			return nil, fmt.Errorf("request timed out after %v: %w", requestDuration, err)
 		}
 		return nil, fmt.Errorf("failed to send HTTP request: %w", err)
@@ -692,7 +705,7 @@ func tryAIEndpoint(ctx context.Context, jsonData []byte) (map[string]interface{}
 
 	// Log response headers for debugging
 	fmt.Printf("Response received in %v - status: %s\n", requestDuration, resp.Status)
-	fmt.Printf("Response headers: Content-Type=%s, Content-Length=%s\n", 
+	fmt.Printf("Response headers: Content-Type=%s, Content-Length=%s\n",
 		resp.Header.Get("Content-Type"), resp.Header.Get("Content-Length"))
 
 	// Check response status
@@ -706,10 +719,10 @@ func tryAIEndpoint(ctx context.Context, jsonData []byte) (map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-	
+
 	// Log successful response
 	fmt.Printf("Successfully received response from AI model %s\n", aiModel)
-	
+
 	// Extract and log a sample of the response content for debugging
 	if choices, ok := responseData["choices"].([]interface{}); ok && len(choices) > 0 {
 		if len(choices) > 0 {
@@ -728,7 +741,7 @@ func tryAIEndpoint(ctx context.Context, jsonData []byte) (map[string]interface{}
 			}
 		}
 	}
-	
+
 	return responseData, nil
 }
 
@@ -738,15 +751,15 @@ func checkAIEndpointHealth(ctx context.Context) bool {
 	// Check if we've done a health check recently (within the last minute)
 	endpointHealthMutex.Lock()
 	defer endpointHealthMutex.Unlock()
-	
+
 	if !lastHealthCheck.IsZero() && time.Since(lastHealthCheck) < time.Minute {
 		return endpointHealthy // Return cached health status if recent
 	}
-	
+
 	// Create a shorter timeout context specifically for health check
 	healthCheckCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	
+
 	// Create a simple models list request to check if the API is responsive
 	healthCheckUrl := aiBaseUrl + "/models"
 	req, err := http.NewRequestWithContext(healthCheckCtx, "GET", healthCheckUrl, nil)
@@ -756,7 +769,7 @@ func checkAIEndpointHealth(ctx context.Context) bool {
 		lastHealthCheck = time.Now()
 		return false
 	}
-	
+
 	// Send the request
 	fmt.Printf("🔍 Performing health check on %s\n", healthCheckUrl)
 	resp, err := httpClient.Do(req)
@@ -767,7 +780,7 @@ func checkAIEndpointHealth(ctx context.Context) bool {
 		return false
 	}
 	defer resp.Body.Close()
-	
+
 	// Check if response is successful
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		fmt.Printf("✅ AI endpoint health check passed (status: %s)\n", resp.Status)
@@ -775,7 +788,7 @@ func checkAIEndpointHealth(ctx context.Context) bool {
 		lastHealthCheck = time.Now()
 		return true
 	}
-	
+
 	// Handle unsuccessful response
 	fmt.Printf("❌ AI endpoint health check failed with status: %s\n", resp.Status)
 	endpointHealthy = false
@@ -787,7 +800,7 @@ func checkAIEndpointHealth(ctx context.Context) bool {
 func updateEndpointHealth(healthy bool) {
 	endpointHealthMutex.Lock()
 	defer endpointHealthMutex.Unlock()
-	
+
 	endpointHealthy = healthy
 	lastHealthCheck = time.Now()
 }
@@ -797,29 +810,29 @@ func updateEndpointHealth(healthy bool) {
 func generateLocalFallbackResponse(solution string, files map[string]string) []FileUpdate {
 	fmt.Printf("\n=== LOCAL RESPONSE (AI UNAVAILABLE) ===\n")
 	fmt.Printf("Based on the provided information, generating fallback response\n")
-	
+
 	// Initialize the result
 	var fileUpdates []FileUpdate
-	
+
 	// Check if this is an OOM issue
-	isOOM := strings.Contains(strings.ToLower(solution), "oomkilled") || 
-	         strings.Contains(strings.ToLower(solution), "out of memory")
-	
+	isOOM := strings.Contains(strings.ToLower(solution), "oomkilled") ||
+		strings.Contains(strings.ToLower(solution), "out of memory")
+
 	if !isOOM {
 		fmt.Printf("Not an OOM issue, returning empty updates\n")
 		fmt.Printf("=== END LOCAL RESPONSE ===\n\n")
 		return []FileUpdate{}
 	}
-	
+
 	// Try to find deployment files with memory limits
 	for name, content := range files {
 		fmt.Printf("Processing file: %s\n", name)
-		
+
 		if strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml") {
 			var deploymentName string
 			var isDeployment bool
 			var memoryLimit string
-			
+
 			// Try to extract deployment name
 			if strings.Contains(content, "kind: Deployment") {
 				isDeployment = true
@@ -830,13 +843,13 @@ func generateLocalFallbackResponse(solution string, files map[string]string) []F
 						deploymentName = strings.TrimSpace(subContent[:endIdx])
 					}
 				}
-				
+
 				// Extract namespace if available (not used currently)
 				if idx := strings.Index(content, "namespace:"); idx >= 0 {
 					// We could extract namespace here if needed
 					// Currently not used in our logic
 				}
-				
+
 				// Check for memory limits
 				if strings.Contains(content, "resources") {
 					if idx := strings.Index(content, "limits:"); idx >= 0 {
@@ -849,15 +862,15 @@ func generateLocalFallbackResponse(solution string, files map[string]string) []F
 						}
 					}
 				}
-				
+
 				if isDeployment && deploymentName != "" {
 					// If we found a deployment, try to update its memory limit
 					updatedContent := content
-					
+
 					// Parse the current memory limit
 					var currentMem int
 					var unit string
-					
+
 					if memoryLimit != "" {
 						// Parse values like "6Mi", "256Mi", "1Gi"
 						numPart := ""
@@ -870,13 +883,13 @@ func generateLocalFallbackResponse(solution string, files map[string]string) []F
 								break
 							}
 						}
-						
+
 						if num, err := strconv.Atoi(numPart); err == nil {
 							currentMem = num
 							unit = unitPart
 						}
 					}
-					
+
 					// If we couldn't parse the limit or it's very small, set a reasonable default
 					if currentMem == 0 || currentMem < 64 {
 						// For very small values, increase substantially
@@ -888,7 +901,7 @@ func generateLocalFallbackResponse(solution string, files map[string]string) []F
 						updatedContent = updateMemoryLimits(content, fmt.Sprintf("%d%s", newMem, unit))
 						fmt.Printf("Increasing memory limit from %s to %d%s\n", memoryLimit, newMem, unit)
 					}
-					
+
 					// Add the updated file to our result
 					if updatedContent != content {
 						fileUpdate := FileUpdate{
@@ -902,10 +915,10 @@ func generateLocalFallbackResponse(solution string, files map[string]string) []F
 			}
 		}
 	}
-	
+
 	fmt.Printf("Generated %d file updates\n", len(fileUpdates))
 	fmt.Printf("=== END LOCAL RESPONSE ===\n\n")
-	
+
 	return fileUpdates
 }
 
@@ -914,42 +927,42 @@ func updateMemoryLimits(content string, newLimit string) string {
 	lines := strings.Split(content, "\n")
 	inResources := false
 	inLimits := false
-	
+
 	for i, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
-		
+
 		// Track if we're in the resources section
 		if strings.HasPrefix(trimmedLine, "resources:") {
 			inResources = true
 			continue
 		}
-		
+
 		// Check indent level to see if we're still in resources
 		if inResources && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && trimmedLine != "" {
 			inResources = false
 			inLimits = false
 			continue
 		}
-		
+
 		// Track if we're in the limits section
 		if inResources && strings.HasPrefix(trimmedLine, "limits:") {
 			inLimits = true
 			continue
 		}
-		
+
 		// Check indent level to see if we're still in limits
 		if inLimits && strings.HasPrefix(trimmedLine, "requests:") {
 			inLimits = false
 			continue
 		}
-		
+
 		// Update memory limit
 		if inLimits && strings.HasPrefix(trimmedLine, "memory:") {
 			indent := extractIndentation(line)
 			lines[i] = indent + "memory: " + newLimit
 		}
 	}
-	
+
 	return strings.Join(lines, "\n")
 }
 
@@ -966,6 +979,84 @@ func extractIndentation(line string) string {
 	return indent
 }
 
+// sendToGHService sends file updates to the gh-service to create a pull request
+func sendToGHService(ctx context.Context, fileUpdates []FileUpdate, diag diagnostic) error {
+	fmt.Printf("Preparing to send updates to gh-service at %s\n", ghServiceUrl)
+
+	// Create a title for the PR with emoji
+	title := fmt.Sprintf("fix: Fixed %s issue in namespace %s", diag.name, diag.namespace)
+
+	// Create PR body with diagnostic information
+	body := fmt.Sprintf("This PR fixes an issue detected by K8sGPT for %s/%s in namespace %s. 🌻\n\n",
+		diag.kind, diag.name, diag.namespace)
+	body += fmt.Sprintf("**Error:** %s\n\n", diag.error)
+	body += fmt.Sprintf("**Solution:** %s\n\n", diag.solution)
+	body += "Changes were automatically generated by Prof Tournesol."
+
+	// Create the files array in the format expected by gh-service
+	// Map FileUpdate to the format expected by gh-service
+	ghFiles := make([]map[string]string, len(fileUpdates))
+	for i, update := range fileUpdates {
+		// Ensure path includes apps/<namespace> prefix if not already present
+		path := update.Path
+		if !strings.HasPrefix(path, fmt.Sprintf("apps/%s/", diag.namespace)) {
+			path = fmt.Sprintf("apps/%s/%s", diag.namespace, path)
+		}
+		
+		ghFiles[i] = map[string]string{
+			"path":    path,
+			"content": update.Content,
+		}
+	}
+
+	// Create the PR payload
+	prPayload := map[string]interface{}{
+		"owner": githubOwner,
+		"repo":  githubRepo,
+		"pr": map[string]interface{}{
+			"title": title,
+			"body":  body,
+			"files": ghFiles,
+		},
+	}
+
+	// Marshal to JSON
+	jsonData, err := json.Marshal(prPayload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal PR payload: %w", err)
+	}
+
+	// Create request to gh-service
+	reqUrl := fmt.Sprintf("%s/pull_requests", ghServiceUrl)
+	req, err := http.NewRequestWithContext(ctx, "POST", reqUrl, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send request
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request to gh-service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("gh-service returned error status %d: %s", resp.StatusCode, respBody)
+	}
+
+	fmt.Printf("gh-service response: %s\n", respBody)
+	return nil
+}
+
 func main() {
 	// Log startup configuration
 	fmt.Printf("Prof Tournesol controller starting with configuration:\n")
@@ -978,6 +1069,9 @@ func main() {
 	fmt.Printf("- AI Max Retries: %d\n", aiMaxRetries)
 	fmt.Printf("- AI Health Check Enabled: %v\n", aiHealthCheck)
 	fmt.Printf("- Local Fallback Enabled: %v\n", useFallback)
+
+	// Log the GH service URL configuration
+	fmt.Printf("- GH Service URL: %s\n", ghServiceUrl)
 
 	// Use in-cluster config
 	config, err := clientcmd.BuildConfigFromFlags("", "")
@@ -1021,7 +1115,7 @@ func main() {
 			// Compare resource versions to avoid duplicate processing
 			oldVersion, _, _ := unstructured.NestedString(oldObj.(*unstructured.Unstructured).Object, "metadata", "resourceVersion")
 			newVersion, _, _ := unstructured.NestedString(newObj.(*unstructured.Unstructured).Object, "metadata", "resourceVersion")
-			
+
 			if oldVersion != newVersion {
 				handleResult(newObj.(*unstructured.Unstructured))
 			} else {
@@ -1042,19 +1136,19 @@ func main() {
 		fmt.Println("Shutting down Prof Tournesol controller...")
 		close(stopCh)
 	}()
-	
+
 	// Listen for USR1 signal to test AI endpoint
 	go func() {
 		usr1Ch := make(chan os.Signal, 1)
 		signal.Notify(usr1Ch, syscall.SIGUSR1)
-		
+
 		for {
 			<-usr1Ch
 			fmt.Println("Received USR1 signal - testing AI endpoint...")
 			testCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			healthy := checkAIEndpointHealth(testCtx)
 			cancel()
-			
+
 			if healthy {
 				fmt.Println("✅ AI endpoint test succeeded")
 			} else {
@@ -1062,13 +1156,13 @@ func main() {
 			}
 		}
 	}()
-	
+
 	// Perform initial health check if enabled
 	if aiHealthCheck {
 		initialCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		healthy := checkAIEndpointHealth(initialCtx)
 		cancel()
-		
+
 		if healthy {
 			fmt.Printf("✅ Initial AI endpoint health check passed\n")
 		} else {

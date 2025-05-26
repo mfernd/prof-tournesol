@@ -1,0 +1,10 @@
+apiVersion: v2
+name: postgres-oom
+description: A Helm chart for PostgreSQL with intentionally low memory limits
+type: application
+version: 0.1.0
+appVersion: "14.0.0"
+dependencies:
+  - name: postgresql
+    version: 16.4.5
+    repository: https://charts.bitnami.com/bitnami
