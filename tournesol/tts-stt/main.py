@@ -3,6 +3,7 @@ from fastapi.exceptions import HTTPException
 from fastapi import FastAPI
 from dotenv import load_dotenv
 from fastapi import UploadFile, File, Form
+from datetime import datetime
 
 import os
 import logging
@@ -101,8 +102,9 @@ async def webhook(file: UploadFile = File(...), author: str = Form(...), referen
     except HTTPException as e:
         raise e
 
-    with open(f'files/conversation_logs.txt', 'w') as f:
-        f.write("------------------------------")
+    with open(f'files/conversation_logs.txt', 'a') as f:
+        f.write("------------------------------\n")
+        f.write(f"Timestamp: {datetime.now()}\n")
         f.write(f"Reference ID: {reference_id}\n")
         f.write(f"AI Message: {conversations[reference_id]['ai_message']}\n")
         f.write(f"User Reply: {conversations[reference_id]['user_reply']}\n")

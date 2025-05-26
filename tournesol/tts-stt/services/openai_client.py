@@ -11,7 +11,7 @@ async def prompt_ai(prompt: str, OPENAI_URL: str):
             messages=[
                 {
                     "role": "user",
-                    "content": f"We have an issue in our kubernetes cluster, determine with the following message if the person is going to take care of it. Answer with only True or False. Message: {prompt}"
+                    "content": f"We have an issue in our kubernetes cluster. Use the follwing message to determine if the person is going to handle the issue. Answer only with Yes or No. Here is the input: '{prompt}'."
                 }
             ]
         )
