@@ -95,16 +95,11 @@ async def webhook(file: UploadFile = File(...), author: str = Form(...), referen
     conversations[reference_id]["user_reply"] = user_transcript
 
     try:
-        response = await prompt_ai(user_transcript, OPENAI_URL)
-        if not response.error:
-            conversations[reference_id]["user_answer"] = response.output.content.text
-            print(conversations)
-        else:
-            logging.error(f"API call failed with status code {response.status} and message: {response.error}")
-            raise HTTPException(status_code=500, detail="Failed to process user transcript with AI.")
-    except Exception as e:
-        logging.exception("An error occurred while processing the user transcript with AI.")
-        raise HTTPException(status_code=500, detail="Internal server error while processing AI response.")
+        result = await prompt_ai(user_transcript, OPENAI_URL)
+        conversations[reference_id]["user_answer"] = result
+        print(conversations)
+    except HTTPException as e:
+        raise e
 
     with open(f'files/conversation_logs.txt', 'w') as f:
         f.write("------------------------------")
