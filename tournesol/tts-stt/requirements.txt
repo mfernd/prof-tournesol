@@ -7,3 +7,4 @@ soundfile
 IPython
 discord.py >= 2.5.2
 librosa
+openai
