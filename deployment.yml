@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: name: nginx-oom
+spec: 
+  replicas: 1
+  selector: 
+    matchLabels: 
+      app: nginx-oom
+  template: 
+    metadata: 
+      labels: 
+        app: nginx-oom
+    spec: 
+      containers:
+        - name: nginx
+          image: nginx:latest
+          resources:
+            limits:
+              cpu: "0.2"
+              memory: "6Mi"
+            requests:
+              cpu: "0.2"
+              memory: "6Mi"
+          ports:
+            - containerPort: 80
