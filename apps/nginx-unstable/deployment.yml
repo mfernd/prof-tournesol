@@ -1,15 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
-metadata:
-  name: nginx-oom
-spec:
+metadata: name: nginx-oom
+spec: 
   replicas: 1
-  selector:
-    matchLabels:
+  selector: 
+    matchLabels: 
       app: nginx-oom
   template:
-    metadata:
-      labels:
+    metadata: 
+      labels: 
         app: nginx-oom
     spec:
       containers:
